@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stable Action V2 - Horizon Lock</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #000; color: white; overflow: hidden; margin: 0; padding: 0; touch-action: none; }
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #rawVideo { display: none; } /* Luôn ẩn video gốc */
+        
+        /* Animation nhấp nháy cho trạng thái ghi hình */
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .recording-dot { animation: pulse-red 1.5s infinite; }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen relative font-sans">
+
+    <!-- Header / Trạng thái -->
+    <header class="p-4 z-10 glass-panel absolute top-0 w-full flex justify-between items-start">
+        <div>
+            <h1 class="text-lg font-bold text-blue-400">Stable Action V2</h1>
+            <p class="text-[10px] text-gray-300">Horizon Lock Algorithm</p>
+        </div>
+        <div class="flex flex-col items-end">
+            <div id="statusIndicator" class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+            <span id="fpsCounter" class="text-[10px] text-gray-400 mt-1 font-mono">0 FPS</span>
+        </div>
+    </header>
+
+    <!-- Màn hình hiển thị lỗi (Debug Console) -->
+    <div id="debugConsole" class="absolute top-16 left-4 right-4 z-30 pointer-events-none flex flex-col gap-1 text-[10px] font-mono opacity-80">
+        <!-- Log sẽ hiện ở đây -->
+    </div>
+
+    <!-- Khu vực hiển thị thuật toán -->
+    <main class="flex-grow relative flex items-center justify-center bg-zinc-900 overflow-hidden w-full h-full">
+        <video id="rawVideo" playsinline autoplay muted></video>
+        <!-- Canvas là nơi diễn ra phép toán xoay và crop -->
+        <canvas id="outputCanvas" class="w-full h-full object-cover"></canvas>
+
+        <!-- Overlay Khởi động -->
+        <div id="startOverlay" class="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-40 px-6 text-center transition-opacity duration-500">
+            <div class="bg-blue-500/20 p-4 rounded-full mb-6">
+                <svg class="w-12 h-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
+            <h2 class="text-xl font-bold mb-3 text-white">Cấp quyền để chạy Thuật toán</h2>
+            <p class="text-gray-400 mb-8 text-xs max-w-xs leading-relaxed">
+                Ứng dụng cần <b class="text-white">Camera</b> và <b class="text-white">Cảm biến xoay</b>. 
+                <br><br>
+                *Nếu Camera bị chặn, hệ thống sẽ tự động bật "Chế độ Mô phỏng" (Cảnh ảo) để bạn vẫn có thể test cảm biến nghiêng.
+            </p>
+            <button id="startBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-10 rounded-full shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] transition-transform transform active:scale-95 text-sm uppercase tracking-wider">
+                Khởi động
+            </button>
+        </div>
+        
+        <!-- Đường chân trời ảo (Crosshair) để dễ nhìn -->
+        <div class="absolute z-10 pointer-events-none opacity-50 flex items-center justify-center w-full h-full">
+            <div class="w-32 h-[1px] bg-white/50 absolute"></div>
+            <div class="w-[1px] h-32 bg-white/50 absolute"></div>
+            <div class="w-4 h-4 border border-white/50 rounded-full absolute"></div>
+        </div>
+    </main>
+
+    <!-- Bảng Điều khiển -->
+    <footer class="p-5 z-20 glass-panel absolute bottom-0 w-full rounded-t-3xl pb-8">
+        <div class="flex justify-between items-center mb-6">
+            <div class="flex items-center gap-2">
+                <span class="font-bold text-sm text-white">Horizon Lock</span>
+                <span class="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded border border-blue-500/30">OIS/EIS Active</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="stabilizeToggle" class="sr-only peer" checked>
+                <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+        </div>
+
+        <div class="space-y-5">
+            <!-- Mức độ Crop -->
+            <div>
+                <div class="flex justify-between text-xs text-gray-400 mb-2 font-medium">
+                    <span>Mức độ cắt viền (Crop Factor)</span>
+                    <span id="cropVal" class="text-white">1.6x</span>
+                </div>
+                <input type="range" id="cropSlider" min="1" max="2.5" step="0.1" value="1.6" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer outline-none">
+            </div>
+
+            <!-- Bộ lọc Low-pass -->
+            <div>
+                <div class="flex justify-between text-xs text-gray-400 mb-2 font-medium">
+                    <span>Lọc nhiễu / Độ mượt (Smoothing)</span>
+                    <span id="smoothVal" class="text-white">85%</span>
+                </div>
+                <input type="range" id="smoothSlider" min="0" max="0.99" step="0.01" value="0.85" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer outline-none">
+            </div>
+            
+            <!-- Góc hiển thị -->
+            <div class="flex justify-between items-center pt-2 border-t border-gray-700/50">
+                <span class="text-[10px] text-gray-500 uppercase tracking-widest">Góc nghiêng trục Z</span>
+                <span id="debugAngle" class="text-sm font-mono text-green-400 font-bold bg-green-400/10 px-2 py-1 rounded">0.00°</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // DOM Elements
+        const video = document.getElementById('rawVideo');
+        const canvas = document.getElementById('outputCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Tối ưu render
+        const startBtn = document.getElementById('startBtn');
+        const startOverlay = document.getElementById('startOverlay');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const debugConsole = document.getElementById('debugConsole');
+        const fpsCounter = document.getElementById('fpsCounter');
+        
+        const stabilizeToggle = document.getElementById('stabilizeToggle');
+        const cropSlider = document.getElementById('cropSlider');
+        const smoothSlider = document.getElementById('smoothSlider');
+        const cropVal = document.getElementById('cropVal');
+        const smoothVal = document.getElementById('smoothVal');
+        const debugAngle = document.getElementById('debugAngle');
+
+        // Biến trạng thái
+        let isStabilizing = true;
+        let cropFactor = 1.6;
+        let smoothing = 0.85;
+        
+        let targetTilt = 0;      // Góc thực tế từ cảm biến
+        let currentTilt = 0;     // Góc đã qua bộ lọc (để xoay mượt)
+        
+        let useFallbackMode = false; // Bật nếu Camera lỗi
+        let animationId;
+        
+        // Đo FPS
+        let lastFrameTime = 0;
+        let frameCount = 0;
+
+        // Cập nhật UI Control
+        stabilizeToggle.addEventListener('change', (e) => isStabilizing = e.target.checked);
+        cropSlider.addEventListener('input', (e) => {
+            cropFactor = parseFloat(e.target.value);
+            cropVal.innerText = cropFactor.toFixed(1) + 'x';
+        });
+        smoothSlider.addEventListener('input', (e) => {
+            smoothing = parseFloat(e.target.value);
+            smoothVal.innerText = Math.round(smoothing * 100) + '%';
+        });
+
+        // Hàm in lỗi lên màn hình (Debug)
+        function logMsg(msg, isError = false) {
+            console.log(msg);
+            const el = document.createElement('div');
+            el.textContent = `> ${msg}`;
+            el.className = isError ? 'text-red-400 bg-red-900/40 p-1 rounded' : 'text-blue-300 bg-blue-900/40 p-1 rounded';
+            debugConsole.appendChild(el);
+            // Xóa log cũ nếu quá nhiều
+            if (debugConsole.children.length > 5) debugConsole.removeChild(debugConsole.firstChild);
+        }
+
+        // Lắng nghe cảm biến (Xử lý Roll - Xoay quanh trục màn hình)
+        function handleOrientation(event) {
+            let gamma = event.gamma; // [-90, 90]
+            let beta = event.beta;   // [-180, 180]
+            
+            if (gamma === null || beta === null) return;
+
+            // Xử lý góc xoay khi người dùng cầm dọc (Portrait). 
+            // Nếu điện thoại bị lật úp ngược (beta > 90), gamma sẽ lật dấu.
+            let roll = gamma;
+            if (Math.abs(beta) > 90) {
+                roll = -Math.sign(gamma) * (180 - Math.abs(gamma));
+            }
+            
+            // Nếu xoay ngang (Landscape), công thức sẽ phức tạp hơn (chuyển sang dùng beta). 
+            // Ở đây ta mặc định người dùng cầm dọc (Portrait mode).
+            targetTilt = roll;
+        }
+
+        // Khởi động
+        startBtn.addEventListener('click', async () => {
+            logMsg("Đang khởi động hệ thống...");
+            startBtn.disabled = true;
+            startBtn.innerText = "Đang kết nối...";
+
+            // 1. Khởi tạo Cảm biến trước (Quan trọng cho iOS)
+            try {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        logMsg("Đã cấp quyền Gyroscope (iOS)");
+                    } else {
+                        logMsg("Lỗi: Quyền Cảm biến bị từ chối!", true);
+                    }
+                } else {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    logMsg("Đã kích hoạt Gyroscope (Android/Desktop)");
+                }
+            } catch (err) {
+                logMsg("Lỗi xin quyền Gyro: " + err.message, true);
+            }
+
+            // 2. Khởi tạo Camera
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                
+                video.srcObject = stream;
+                
+                // Đảm bảo video play thành công (Vượt qua policy autoplay)
+                await video.play();
+                logMsg("Đã kết nối Camera thành công");
+
+                // Gán kích thước canvas bằng kích thước video
+                canvas.width = video.videoWidth || window.innerWidth;
+                canvas.height = video.videoHeight || window.innerHeight;
+                useFallbackMode = false;
+
+            } catch (err) {
+                logMsg("Camera bị chặn/lỗi: " + err.message, true);
+                logMsg("Chuyển sang Chế độ Mô phỏng (Fallback)...");
+                useFallbackMode = true; // Bật chế độ vẽ phong cảnh ảo
+                
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+
+            // 3. Hoàn tất UI và Bắt đầu Vòng lặp
+            startOverlay.style.opacity = '0';
+            setTimeout(() => startOverlay.classList.add('hidden'), 500);
+            
+            statusIndicator.classList.replace('bg-red-500', 'bg-green-500');
+            statusIndicator.classList.add('recording-dot');
+
+            // Resize event
+            window.addEventListener('resize', () => {
+                if (!useFallbackMode && video.videoWidth) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                } else {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                }
+            });
+
+            requestAnimationFrame(renderLoop);
+        });
+
+        // Hàm vẽ cảnh ảo (Nếu không có Camera)
+        function drawFallbackScene(ctx, width, height) {
+            // Vẽ trời
+            ctx.fillStyle = "#3b82f6"; // Blue-500
+            ctx.fillRect(-width, -height, width * 2, height);
+            
+            // Vẽ mặt đất
+            ctx.fillStyle = "#854d0e"; // Yellow-800
+            ctx.fillRect(-width, 0, width * 2, height);
+            
+            // Vẽ lưới để thấy rõ chuyển động
+            ctx.strokeStyle = "rgba(255,255,255,0.2)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(let i = -width; i < width; i += 50) {
+                ctx.moveTo(i, -height); ctx.lineTo(i, height); // Cột dọc
+                ctx.moveTo(-width, i); ctx.lineTo(width, i);   // Hàng ngang
+            }
+            ctx.stroke();
+
+            // Vẽ "mặt trời" cho có định hướng
+            ctx.fillStyle = "#fbbf24";
+            ctx.beginPath();
+            ctx.arc(0, -height/4, 80, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Text cảnh báo
+            ctx.fillStyle = "white";
+            ctx.font = "bold 24px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("CHẾ ĐỘ MÔ PHỎNG", 0, -20);
+            ctx.font = "16px sans-serif";
+            ctx.fillText("(Nghiêng điện thoại để xem thuật toán)", 0, 20);
+        }
+
+        // Vòng lặp xử lý hình ảnh (Frame-by-frame)
+        function renderLoop(timestamp) {
+            // Tính FPS
+            if (timestamp - lastFrameTime >= 1000) {
+                fpsCounter.innerText = `${frameCount} FPS`;
+                frameCount = 0;
+                lastFrameTime = timestamp;
+            }
+            frameCount++;
+
+            // Thuật toán bù trừ góc: Lọc Low-pass (Làm mượt dao động)
+            currentTilt = (currentTilt * smoothing) + (targetTilt * (1 - smoothing));
+            
+            // Hiển thị góc lên UI (Hiển thị số dương/âm rõ ràng)
+            debugAngle.innerText = (currentTilt > 0 ? "+" : "") + currentTilt.toFixed(2) + "°";
+
+            const cw = canvas.width;
+            const ch = canvas.height;
+
+            // Xóa khung hình cũ
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, cw, ch);
+            
+            ctx.save();
+
+            // Dời gốc tọa độ (Anchor point) vào chính giữa màn hình
+            ctx.translate(cw / 2, ch / 2);
+
+            if (isStabilizing) {
+                // Cốt lõi của Horizon Lock:
+                // Nếu điện thoại nghiêng góc X độ, ta xoay Canvas góc -X độ.
+                ctx.rotate(-currentTilt * (Math.PI / 180));
+                
+                // Crop (Phóng to) để lấp đầy các viền đen hở ra khi xoay hình chữ nhật
+                ctx.scale(cropFactor, cropFactor);
+            }
+
+            // Render hình ảnh
+            if (useFallbackMode) {
+                drawFallbackScene(ctx, cw, ch);
+            } else {
+                // Đảm bảo video đã có dữ liệu trước khi vẽ
+                if (video.readyState >= 2) {
+                    ctx.drawImage(video, -cw / 2, -ch / 2, cw, ch);
+                }
+            }
+
+            ctx.restore();
+
+            // Lặp lại
+            animationId = requestAnimationFrame(renderLoop);
+        }
+    </script>
+</body>
+</html>
+
+
