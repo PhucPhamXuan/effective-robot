@@ -73,7 +73,7 @@
         </div>
       </div>
 
-      <!-- Right Panel: Danh sách người chơi khác (Mini Cards) & Master Board -->
+      <!-- Right Panel: Danh sách người chơi khác & Master Board -->
       <div class="w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[300px] flex flex-col gap-4">
         
         <!-- Bảng theo dõi đối thủ -->
@@ -104,21 +104,28 @@
   </div>
 
   <script type="module">
+    // Sử dụng phiên bản 11.6.1 đồng bộ để đảm bảo tương thích mọi module
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     /* --- FIREBASE INIT --- */
-    let firebaseConfig;
-    if (typeof __firebase_config !== 'undefined') {
-      firebaseConfig = JSON.parse(__firebase_config);
-    } else {
-      firebaseConfig = { apiKey: "AIzaSyDgdL4ibA4EZziE4svdOYzuKoYh09lqOKM", authDomain: "bingo-e491b.firebaseapp.com", projectId: "bingo-e491b", storageBucket: "bingo-e491b.firebasestorage.app", messagingSenderId: "33961229962", appId: "1:33961229962:web:571cadb1206de1bcb2f773" };
-    }
+    const firebaseConfig = {
+      apiKey: "AIzaSyDgdL4ibA4EZziE4svdOYzuKoYh09lqOKM",
+      authDomain: "bingo-e491b.firebaseapp.com",
+      projectId: "bingo-e491b",
+      storageBucket: "bingo-e491b.firebasestorage.app",
+      messagingSenderId: "33961229962",
+      appId: "1:33961229962:web:571cadb1206de1bcb2f773",
+      measurementId: "G-YLWQ57YTYB"
+    };
+
     const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'github-bingo-app';
+    const collectionPath = 'bingo_rooms'; // Đơn giản hóa đường dẫn cho Firebase cá nhân của bạn
     let user = null;
 
     /* --- GAME STATE --- */
@@ -134,7 +141,7 @@
     let myCard = [];
     let drawnNumbers = [];
     let wonLines = [];
-    let playersData = {}; // Chứa data của tất cả người trong phòng
+    let playersData = {}; 
     
     let isHost = false;
     let roomId = null;
@@ -151,7 +158,7 @@
       CONFIG.forEach((cfg, c) => {
         let nums = new Set();
         while (nums.size < 5) nums.add(Math.floor(Math.random() * (cfg.max - cfg.min + 1)) + cfg.min);
-        Array.from(nums).forEach((num, r) => myCard[r][c] = { n: num, m: false }); // Dùng key ngắn n,m cho nhẹ db
+        Array.from(nums).forEach((num, r) => myCard[r][c] = { n: num, m: false }); 
       });
     }
 
@@ -179,9 +186,8 @@
         renderMainCard();
         renderStats();
 
-        // Đẩy thẻ vừa cập nhật lên Firebase cho người khác xem
         if(roomId && user) {
-          const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'bingo_rooms', roomId);
+          const roomRef = doc(db, collectionPath, roomId);
           await updateDoc(roomRef, {
             [`players.${user.uid}.card`]: myCard,
             [`players.${user.uid}.bingos`]: wonLines.length
@@ -232,7 +238,6 @@
       }).join('');
       container.scrollLeft = container.scrollWidth;
 
-      // Render Master Board
       let masterHtml = '<div class="flex bg-white rounded-t-sm overflow-hidden mb-[1px]">';
       CONFIG.forEach(c => masterHtml += `<div class="flex-1 ${c.c} flex justify-center py-0.5"><span class="text-white text-[8px] font-bold">${c.l}</span></div>`);
       masterHtml += '</div><div class="grid grid-cols-5 gap-[1px] bg-white p-[1px] rounded-b-sm">';
@@ -250,18 +255,16 @@
       const pCount = Object.keys(playersData).length;
       document.getElementById('player-count').innerText = `${pCount}/4`;
 
-      // Render Thẻ Mini của những người khác (Trừ bản thân)
       let opponentsHtml = '';
       Object.entries(playersData).forEach(([uid, data]) => {
-        if (uid === user.uid) return; // Không vẽ lại thẻ của mình ở đây
+        if (uid === user.uid) return; 
         
         let miniGrid = '';
         if(data.card) {
           for(let r=0; r<5; r++){
             for(let c=0; c<5; c++){
               const cell = data.card[r][c];
-              const isMarked = cell.m;
-              miniGrid += `<div class="w-full aspect-square ${isMarked ? 'bg-red-500' : 'bg-white'} border border-gray-200"></div>`;
+              miniGrid += `<div class="w-full aspect-square ${cell.m ? 'bg-red-500' : 'bg-white'} border border-gray-200"></div>`;
             }
           }
         }
@@ -284,13 +287,10 @@
     /* --- MULTIPLAYER LOGIC --- */
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (e) { console.error("Auth error:", e); }
     };
+    
     onAuthStateChanged(auth, (u) => { user = u; });
 
     function showGame() {
@@ -309,7 +309,7 @@
       generateCard();
 
       try {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'bingo_rooms', roomId), {
+        await setDoc(doc(db, collectionPath, roomId), {
           drawnNumbers: [],
           hostId: user.uid,
           status: 'playing',
@@ -319,7 +319,10 @@
         });
         listenToRoom();
         showGame();
-      } catch (e) { alert("Lỗi tạo phòng: " + e.message); }
+      } catch (e) { 
+        alert("Lỗi tạo phòng! Đảm bảo bạn đã bật Firestore và cập nhật Security Rules.");
+        console.error(e);
+      }
     };
 
     window.joinRoom = async () => {
@@ -328,46 +331,47 @@
       const inputId = document.getElementById('room-id-input').value.toUpperCase().trim();
       if (!inputId) return alert("Vui lòng nhập mã phòng!");
       
-      const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'bingo_rooms', inputId);
-      const roomSnap = await getDoc(roomRef);
-      
-      if (!roomSnap.exists()) return alert("Phòng không tồn tại!");
-      const roomData = roomSnap.data();
-      
-      // Kiểm tra giới hạn 4 người
-      if (Object.keys(roomData.players || {}).length >= 4 && !roomData.players[user.uid]) {
-        return alert("Phòng đã đầy (Tối đa 4 người)!");
+      try {
+        const roomRef = doc(db, collectionPath, inputId);
+        const roomSnap = await getDoc(roomRef);
+        
+        if (!roomSnap.exists()) return alert("Phòng không tồn tại!");
+        const roomData = roomSnap.data();
+        
+        if (Object.keys(roomData.players || {}).length >= 4 && !roomData.players[user.uid]) {
+          return alert("Phòng đã đầy (Tối đa 4 người)!");
+        }
+
+        roomId = inputId;
+        isHost = false;
+        generateCard();
+
+        await updateDoc(roomRef, {
+          [`players.${user.uid}`]: { name: myName, card: myCard, bingos: 0 }
+        });
+
+        listenToRoom();
+        showGame();
+      } catch (e) {
+        alert("Lỗi kết nối! Đảm bảo bạn đã bật Firestore và cập nhật Security Rules.");
+        console.error(e);
       }
-
-      roomId = inputId;
-      isHost = false;
-      generateCard();
-
-      // Thêm mình vào danh sách players
-      await updateDoc(roomRef, {
-        [`players.${user.uid}`]: { name: myName, card: myCard, bingos: 0 }
-      });
-
-      listenToRoom();
-      showGame();
     };
 
     function listenToRoom() {
       if (unsubscribe) unsubscribe();
-      const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'bingo_rooms', roomId);
+      const roomRef = doc(db, collectionPath, roomId);
       
       unsubscribe = onSnapshot(roomRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
           
-          // Render bóng nếu có số mới
           if(data.drawnNumbers.length !== drawnNumbers.length) {
             drawnNumbers = data.drawnNumbers || [];
             renderBalls();
-            renderMainCard(); // Vẽ lại màu xám mờ cho số vừa ra
+            renderMainCard();
           }
 
-          // Cập nhật thẻ của đối thủ
           playersData = data.players || {};
           renderStats();
         }
@@ -396,10 +400,11 @@
       let newNum;
       do { newNum = Math.floor(Math.random() * 75) + 1; } while (drawnNumbers.includes(newNum));
       
-      const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'bingo_rooms', roomId);
+      const roomRef = doc(db, collectionPath, roomId);
       await updateDoc(roomRef, { drawnNumbers: arrayUnion(newNum) });
     }
 
+    // Khởi tạo Auth
     initAuth();
   </script>
 </body>
