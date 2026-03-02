@@ -171,11 +171,12 @@
         renderMainCard();
         renderStats();
 
+        // Cập nhật card lên Firebase (nén thành JSON string để tránh lỗi nested arrays)
         if(roomId && user) {
           try {
             const roomRef = doc(db, collectionPath, roomId);
             await updateDoc(roomRef, {
-              [`players.${user.uid}.card`]: myCard,
+              [`players.${user.uid}.card`]: JSON.stringify(myCard),
               [`players.${user.uid}.bingos`]: wonLines.length
             });
           } catch(e) { console.error("Lỗi cập nhật điểm:", e); }
@@ -225,18 +226,23 @@
       const pCount = Object.keys(playersData).length;
       document.getElementById('player-count').innerText = `${pCount}/4`;
       let opponentsHtml = '';
+      
       Object.entries(playersData).forEach(([uid, data]) => {
         if (uid === user.uid) return; 
+        
         let miniGrid = '';
         if(data.card) {
+          // Giải nén JSON array từ Firebase
+          let cardArr = typeof data.card === 'string' ? JSON.parse(data.card) : data.card;
           for(let r=0; r<5; r++){
             for(let c=0; c<5; c++){
-              miniGrid += `<div class="w-full aspect-square ${data.card[r][c].m ? 'bg-red-500' : 'bg-white'} border border-gray-200"></div>`;
+              miniGrid += `<div class="w-full aspect-square ${cardArr[r][c].m ? 'bg-red-500' : 'bg-white'} border border-gray-200"></div>`;
             }
           }
         }
         opponentsHtml += `<div class="bg-teal-900 rounded-lg p-1.5 border-2 border-teal-700 flex flex-col items-center"><div class="text-[10px] font-bold text-white truncate w-full text-center mb-1">${data.name}</div><div class="grid grid-cols-5 gap-[1px] w-[50px] bg-gray-300 border border-gray-400 p-[1px] rounded-[2px]">${miniGrid}</div><div class="text-[9px] font-bold text-yellow-400 mt-1">${data.bingos || 0} Bingo</div></div>`;
       });
+      
       if(opponentsHtml === '') opponentsHtml = '<div class="col-span-2 text-center text-xs font-bold text-teal-800 italic py-2">Chưa có ai vào phòng...</div>';
       document.getElementById('opponents-container').innerHTML = opponentsHtml;
     }
@@ -246,7 +252,7 @@
       try {
         const cred = await signInAnonymously(auth);
         user = cred.user;
-      } catch (e) { throw e; } // Đẩy lỗi ra để xử lý ở createRoom/joinRoom
+      } catch (e) { throw e; } 
     };
     
     onAuthStateChanged(auth, (u) => { if(u) user = u; });
@@ -262,29 +268,28 @@
     window.createRoom = async () => {
       myName = document.getElementById('player-name').value.trim() || "Host";
       
-      // Kiểm tra Auth trước
       try {
         if (!user) await initAuth();
       } catch (e) {
-        return alert("LỖI XÁC THỰC (Auth): Hãy vào Firebase > Authentication > Bật tính năng 'Anonymous' (Khách ẩn danh).\n\nChi tiết lỗi: " + e.message);
+        return alert(`⛔ LỖI AUTHENTICATION:\n${e.message}`);
       }
 
       roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
       isHost = true;
       generateCard();
 
-      // Kiểm tra Database
       try {
+        // Nén myCard thành JSON string trước khi lưu
         await setDoc(doc(db, collectionPath, roomId), {
           drawnNumbers: [],
           hostId: user.uid,
           status: 'playing',
-          players: { [user.uid]: { name: myName, card: myCard, bingos: 0 } }
+          players: { [user.uid]: { name: myName, card: JSON.stringify(myCard), bingos: 0 } }
         });
         listenToRoom();
         showGame();
       } catch (e) { 
-        alert("LỖI DATABASE (Firestore): Hãy vào Firebase > Firestore > Rules và đặt:\nallow read, write: if true;\n\nChi tiết lỗi: " + e.message);
+        alert(`⛔ LỖI TẠO PHÒNG:\n${e.message}`);
       }
     };
 
@@ -294,7 +299,7 @@
       try {
         if (!user) await initAuth();
       } catch (e) {
-        return alert("LỖI XÁC THỰC (Auth): " + e.message);
+        return alert(`⛔ LỖI AUTHENTICATION:\n${e.message}`);
       }
 
       const inputId = document.getElementById('room-id-input').value.toUpperCase().trim();
@@ -304,7 +309,7 @@
         const roomRef = doc(db, collectionPath, inputId);
         const roomSnap = await getDoc(roomRef);
         
-        if (!roomSnap.exists()) return alert("Phòng không tồn tại!");
+        if (!roomSnap.exists()) return alert("Mã phòng không tồn tại!");
         const roomData = roomSnap.data();
         
         if (Object.keys(roomData.players || {}).length >= 4 && !roomData.players[user.uid]) {
@@ -315,14 +320,15 @@
         isHost = false;
         generateCard();
 
+        // Nén myCard thành JSON string trước khi update
         await updateDoc(roomRef, {
-          [`players.${user.uid}`]: { name: myName, card: myCard, bingos: 0 }
+          [`players.${user.uid}`]: { name: myName, card: JSON.stringify(myCard), bingos: 0 }
         });
 
         listenToRoom();
         showGame();
       } catch (e) {
-        alert("LỖI KẾT NỐI DATABASE: " + e.message);
+        alert(`⛔ LỖI VÀO PHÒNG:\n${e.message}`);
       }
     };
 
@@ -366,8 +372,8 @@
       } catch(e) { console.error("Lỗi gọi số:", e); }
     }
 
-    // Thử Auth ẩn danh ngay khi mở trang web
-    initAuth().catch(e => console.error("Chưa bật Auth Anonymous", e));
+    // Tự động khởi tạo ẩn danh
+    initAuth().catch(e => console.error("Chưa bật Auth", e));
   </script>
 </body>
 </html>
