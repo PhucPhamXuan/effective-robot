@@ -73,23 +73,16 @@
         </div>
       </div>
 
-      <!-- Right Panel: Danh sách người chơi khác & Master Board -->
+      <!-- Right Panel -->
       <div class="w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[300px] flex flex-col gap-4">
-        
-        <!-- Bảng theo dõi đối thủ -->
         <div class="bg-[#8fd3a4] p-3 rounded-xl border-4 border-teal-800 shadow-xl">
           <div class="text-teal-900 font-black text-sm mb-2 flex justify-between items-center">
             <span>ĐỐI THỦ (Tối đa 4)</span>
             <span id="player-count" class="bg-teal-900 text-white px-2 rounded-full text-xs">1/4</span>
           </div>
-          <div id="opponents-container" class="grid grid-cols-2 gap-2">
-            <!-- Thẻ mini của người chơi khác sẽ render ở đây -->
-          </div>
+          <div id="opponents-container" class="grid grid-cols-2 gap-2"></div>
         </div>
-
-        <!-- Bảng số đã gọi (Master Board) -->
         <div class="bg-[#b06030] p-2 rounded-xl border-4 border-[#8b4513] shadow-xl self-center lg:self-start w-full max-w-[200px]" id="master-board"></div>
-
       </div>
 
     </div>
@@ -104,28 +97,23 @@
   </div>
 
   <script type="module">
-    // Sử dụng phiên bản 11.6.1 đồng bộ để đảm bảo tương thích mọi module
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    /* --- FIREBASE INIT --- */
     const firebaseConfig = {
       apiKey: "AIzaSyDgdL4ibA4EZziE4svdOYzuKoYh09lqOKM",
       authDomain: "bingo-e491b.firebaseapp.com",
       projectId: "bingo-e491b",
       storageBucket: "bingo-e491b.firebasestorage.app",
       messagingSenderId: "33961229962",
-      appId: "1:33961229962:web:571cadb1206de1bcb2f773",
-      measurementId: "G-YLWQ57YTYB"
+      appId: "1:33961229962:web:571cadb1206de1bcb2f773"
     };
 
     const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const collectionPath = 'bingo_rooms'; // Đơn giản hóa đường dẫn cho Firebase cá nhân của bạn
+    const collectionPath = 'bingo_rooms';
     let user = null;
 
     /* --- GAME STATE --- */
@@ -142,7 +130,6 @@
     let drawnNumbers = [];
     let wonLines = [];
     let playersData = {}; 
-    
     let isHost = false;
     let roomId = null;
     let drawInterval = null;
@@ -175,49 +162,39 @@
       const cell = myCard[r][c];
       if (drawnNumbers.includes(cell.n)) {
         cell.m = !cell.m;
-        
         const newWonLines = checkWinningLines();
         if (newWonLines.some(line => !wonLines.includes(line))) {
           document.getElementById('bingo-popup').classList.remove('hidden');
           setTimeout(() => document.getElementById('bingo-popup').classList.add('hidden'), 2000);
         }
         wonLines = newWonLines;
-        
         renderMainCard();
         renderStats();
 
         if(roomId && user) {
-          const roomRef = doc(db, collectionPath, roomId);
-          await updateDoc(roomRef, {
-            [`players.${user.uid}.card`]: myCard,
-            [`players.${user.uid}.bingos`]: wonLines.length
-          });
+          try {
+            const roomRef = doc(db, collectionPath, roomId);
+            await updateDoc(roomRef, {
+              [`players.${user.uid}.card`]: myCard,
+              [`players.${user.uid}.bingos`]: wonLines.length
+            });
+          } catch(e) { console.error("Lỗi cập nhật điểm:", e); }
         }
       }
     };
 
     /* --- RENDER UI --- */
     function renderMainCard() {
-      document.getElementById('card-header').innerHTML = CONFIG.map(c => 
-        `<div class="flex-1 ${c.c} flex items-center justify-center border-r border-b border-black/20"><span class="text-white text-lg sm:text-xl lg:text-3xl font-black drop-shadow-md">${c.l}</span></div>`
-      ).join('');
-
+      document.getElementById('card-header').innerHTML = CONFIG.map(c => `<div class="flex-1 ${c.c} flex items-center justify-center border-r border-b border-black/20"><span class="text-white text-lg sm:text-xl lg:text-3xl font-black drop-shadow-md">${c.l}</span></div>`).join('');
       let gridHtml = '';
       for (let r = 0; r < 5; r++) {
         for (let c = 0; c < 5; c++) {
           const cell = myCard[r][c];
           const isDrawn = drawnNumbers.includes(cell.n);
           const isWinCell = wonLines.includes(`r${r}`) || wonLines.includes(`c${c}`) || (r === c && wonLines.includes('dm')) || (r + c === 4 && wonLines.includes('da'));
-          
           let bgClass = isWinCell ? 'bg-yellow-100' : (isDrawn && !cell.m ? 'bg-pink-50' : 'bg-white');
           let textClass = isDrawn && !cell.m ? 'text-gray-400' : 'text-slate-800';
-          
-          gridHtml += `
-            <div onclick="handleCellClick(${r}, ${c})" class="relative w-full h-full flex items-center justify-center cursor-pointer active:bg-gray-200 transition-colors ${bgClass}">
-              ${isWinCell ? '<div class="absolute inset-0 border-2 lg:border-4 border-yellow-400 animate-pulse-fast z-0"></div>' : ''}
-              <span class="text-xl sm:text-2xl lg:text-3xl font-bold z-10 ${textClass}">${cell.n}</span>
-              ${cell.m ? `<div class="absolute inset-0 m-auto w-[80%] h-[80%] rounded-full bg-gradient-to-br from-red-500 to-red-600 shadow-sm flex items-center justify-center border-[2px] border-red-700 animate-pop-in z-20"><div class="text-white w-full h-full flex justify-center items-center ${isWinCell ? 'text-yellow-300' : 'text-white'}">${starSVG}</div></div>` : ''}
-            </div>`;
+          gridHtml += `<div onclick="handleCellClick(${r}, ${c})" class="relative w-full h-full flex items-center justify-center cursor-pointer active:bg-gray-200 transition-colors ${bgClass}">${isWinCell ? '<div class="absolute inset-0 border-2 lg:border-4 border-yellow-400 animate-pulse-fast z-0"></div>' : ''}<span class="text-xl sm:text-2xl lg:text-3xl font-bold z-10 ${textClass}">${cell.n}</span>${cell.m ? `<div class="absolute inset-0 m-auto w-[80%] h-[80%] rounded-full bg-gradient-to-br from-red-500 to-red-600 shadow-sm flex items-center justify-center border-[2px] border-red-700 animate-pop-in z-20"><div class="text-white w-full h-full flex justify-center items-center ${isWinCell ? 'text-yellow-300' : 'text-white'}">${starSVG}</div></div>` : ''}</div>`;
         }
       }
       document.getElementById('bingo-grid').innerHTML = gridHtml;
@@ -227,14 +204,7 @@
       const container = document.getElementById('drawn-balls-container');
       container.innerHTML = drawnNumbers.map(num => {
         const c = getNumConfig(num);
-        return `<div class="flex flex-col items-center animate-bounce-in shrink-0">
-                  <div class="w-10 h-10 lg:w-14 lg:h-14 rounded-full bg-gradient-to-br ${c.bc} shadow-md flex flex-col items-center justify-center border-b-[2px] border-black/20">
-                    <span class="text-white text-[8px] lg:text-xs font-bold leading-none mb-[1px]">${c.l}</span>
-                    <div class="bg-white rounded-full w-6 h-6 lg:w-8 lg:h-8 flex items-center justify-center shadow-inner">
-                      <span class="text-xs lg:text-base font-black ${c.t}">${num}</span>
-                    </div>
-                  </div>
-                </div>`;
+        return `<div class="flex flex-col items-center animate-bounce-in shrink-0"><div class="w-10 h-10 lg:w-14 lg:h-14 rounded-full bg-gradient-to-br ${c.bc} shadow-md flex flex-col items-center justify-center border-b-[2px] border-black/20"><span class="text-white text-[8px] lg:text-xs font-bold leading-none mb-[1px]">${c.l}</span><div class="bg-white rounded-full w-6 h-6 lg:w-8 lg:h-8 flex items-center justify-center shadow-inner"><span class="text-xs lg:text-base font-black ${c.t}">${num}</span></div></div></div>`;
       }).join('');
       container.scrollLeft = container.scrollWidth;
 
@@ -254,44 +224,32 @@
     function renderStats() {
       const pCount = Object.keys(playersData).length;
       document.getElementById('player-count').innerText = `${pCount}/4`;
-
       let opponentsHtml = '';
       Object.entries(playersData).forEach(([uid, data]) => {
         if (uid === user.uid) return; 
-        
         let miniGrid = '';
         if(data.card) {
           for(let r=0; r<5; r++){
             for(let c=0; c<5; c++){
-              const cell = data.card[r][c];
-              miniGrid += `<div class="w-full aspect-square ${cell.m ? 'bg-red-500' : 'bg-white'} border border-gray-200"></div>`;
+              miniGrid += `<div class="w-full aspect-square ${data.card[r][c].m ? 'bg-red-500' : 'bg-white'} border border-gray-200"></div>`;
             }
           }
         }
-
-        opponentsHtml += `
-          <div class="bg-teal-900 rounded-lg p-1.5 border-2 border-teal-700 flex flex-col items-center">
-            <div class="text-[10px] font-bold text-white truncate w-full text-center mb-1">${data.name}</div>
-            <div class="grid grid-cols-5 gap-[1px] w-[50px] bg-gray-300 border border-gray-400 p-[1px] rounded-[2px]">
-              ${miniGrid}
-            </div>
-            <div class="text-[9px] font-bold text-yellow-400 mt-1">${data.bingos || 0} Bingo</div>
-          </div>
-        `;
+        opponentsHtml += `<div class="bg-teal-900 rounded-lg p-1.5 border-2 border-teal-700 flex flex-col items-center"><div class="text-[10px] font-bold text-white truncate w-full text-center mb-1">${data.name}</div><div class="grid grid-cols-5 gap-[1px] w-[50px] bg-gray-300 border border-gray-400 p-[1px] rounded-[2px]">${miniGrid}</div><div class="text-[9px] font-bold text-yellow-400 mt-1">${data.bingos || 0} Bingo</div></div>`;
       });
-
       if(opponentsHtml === '') opponentsHtml = '<div class="col-span-2 text-center text-xs font-bold text-teal-800 italic py-2">Chưa có ai vào phòng...</div>';
       document.getElementById('opponents-container').innerHTML = opponentsHtml;
     }
 
-    /* --- MULTIPLAYER LOGIC --- */
+    /* --- AUTH & MULTIPLAYER LOGIC --- */
     const initAuth = async () => {
       try {
-        await signInAnonymously(auth);
-      } catch (e) { console.error("Auth error:", e); }
+        const cred = await signInAnonymously(auth);
+        user = cred.user;
+      } catch (e) { throw e; } // Đẩy lỗi ra để xử lý ở createRoom/joinRoom
     };
     
-    onAuthStateChanged(auth, (u) => { user = u; });
+    onAuthStateChanged(auth, (u) => { if(u) user = u; });
 
     function showGame() {
       document.getElementById('lobby-screen').classList.add('hidden');
@@ -303,31 +261,42 @@
 
     window.createRoom = async () => {
       myName = document.getElementById('player-name').value.trim() || "Host";
-      if (!user) await initAuth();
+      
+      // Kiểm tra Auth trước
+      try {
+        if (!user) await initAuth();
+      } catch (e) {
+        return alert("LỖI XÁC THỰC (Auth): Hãy vào Firebase > Authentication > Bật tính năng 'Anonymous' (Khách ẩn danh).\n\nChi tiết lỗi: " + e.message);
+      }
+
       roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
       isHost = true;
       generateCard();
 
+      // Kiểm tra Database
       try {
         await setDoc(doc(db, collectionPath, roomId), {
           drawnNumbers: [],
           hostId: user.uid,
           status: 'playing',
-          players: {
-            [user.uid]: { name: myName, card: myCard, bingos: 0 }
-          }
+          players: { [user.uid]: { name: myName, card: myCard, bingos: 0 } }
         });
         listenToRoom();
         showGame();
       } catch (e) { 
-        alert("Lỗi tạo phòng! Đảm bảo bạn đã bật Firestore và cập nhật Security Rules.");
-        console.error(e);
+        alert("LỖI DATABASE (Firestore): Hãy vào Firebase > Firestore > Rules và đặt:\nallow read, write: if true;\n\nChi tiết lỗi: " + e.message);
       }
     };
 
     window.joinRoom = async () => {
       myName = document.getElementById('player-name').value.trim() || "Player";
-      if (!user) await initAuth();
+      
+      try {
+        if (!user) await initAuth();
+      } catch (e) {
+        return alert("LỖI XÁC THỰC (Auth): " + e.message);
+      }
+
       const inputId = document.getElementById('room-id-input').value.toUpperCase().trim();
       if (!inputId) return alert("Vui lòng nhập mã phòng!");
       
@@ -353,29 +322,25 @@
         listenToRoom();
         showGame();
       } catch (e) {
-        alert("Lỗi kết nối! Đảm bảo bạn đã bật Firestore và cập nhật Security Rules.");
-        console.error(e);
+        alert("LỖI KẾT NỐI DATABASE: " + e.message);
       }
     };
 
     function listenToRoom() {
       if (unsubscribe) unsubscribe();
       const roomRef = doc(db, collectionPath, roomId);
-      
       unsubscribe = onSnapshot(roomRef, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
-          
           if(data.drawnNumbers.length !== drawnNumbers.length) {
             drawnNumbers = data.drawnNumbers || [];
             renderBalls();
             renderMainCard();
           }
-
           playersData = data.players || {};
           renderStats();
         }
-      }, (error) => console.error("Listen error:", error));
+      });
     }
 
     window.toggleDraw = () => {
@@ -393,19 +358,16 @@
     };
 
     async function drawNextNumber() {
-      if (drawnNumbers.length >= 75) {
-        clearInterval(drawInterval);
-        return;
-      }
+      if (drawnNumbers.length >= 75) { clearInterval(drawInterval); return; }
       let newNum;
       do { newNum = Math.floor(Math.random() * 75) + 1; } while (drawnNumbers.includes(newNum));
-      
-      const roomRef = doc(db, collectionPath, roomId);
-      await updateDoc(roomRef, { drawnNumbers: arrayUnion(newNum) });
+      try {
+        await updateDoc(doc(db, collectionPath, roomId), { drawnNumbers: arrayUnion(newNum) });
+      } catch(e) { console.error("Lỗi gọi số:", e); }
     }
 
-    // Khởi tạo Auth
-    initAuth();
+    // Thử Auth ẩn danh ngay khi mở trang web
+    initAuth().catch(e => console.error("Chưa bật Auth Anonymous", e));
   </script>
 </body>
 </html>
